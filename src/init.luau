@@ -8,13 +8,18 @@
     • ⚡ Optimized for performance
     • 🛡️ Type-safe with Luau
     
-    Version: 1.0.0
+    Version: 1.0.1
     Author: ArtisticVampyre
+	Contributor: @32_Bits (https://github.com/git0uttahere)
 --]]
 
 -- 🔧 Core Services
 local HttpService: HttpService = game:GetService("HttpService")
 local RunService: RunService = game:GetService("RunService")
+
+-- ⚙️ Configuration
+-- How long (in seconds) a require/onInit may yield before Galaxy warns about it.
+local INIT_YIELD_WARNING_TIME = 3
 
 -- 📝 Type Definitions
 type LaunchParams = {
@@ -23,7 +28,7 @@ type LaunchParams = {
 }
 
 -- 🌟 Main Module
-local Galaxy = { _VERSION = "1.0.0" }
+local Galaxy = { _VERSION = "1.0.1" }
 
 -- 🎯 Environment Detection
 local SystemKey: string = RunService:IsServer() and "service" or "controller"
@@ -38,6 +43,37 @@ local Systems: { [string]: any } = {}
 -----------------------------------------------------
 -- Helper Functions
 -----------------------------------------------------
+
+local function _errorHandler(err: any): string
+	return tostring(err) .. "\n" .. debug.traceback()
+end
+
+--[[
+	Requires a module with error isolation + a yield watchdog. require() runs the
+	module's top-level body, which can both error AND yield (e.g. a top-level
+	WaitForChild / :Wait()). Either would otherwise silently stall the whole boot,
+	so we catch errors (returning ok = false) and warn by name if the require
+	yields longer than INIT_YIELD_WARNING_TIME.
+]]
+local function _safeRequire(module: ModuleScript, label: string): (boolean, any)
+	local completed = false
+	task.delay(INIT_YIELD_WARNING_TIME, function()
+		if not completed then
+			warn(
+				(`⏳ [Galaxy][IMPORTANT] requiring %s '%s' has been yielding for %ds+. `
+					.. `A top-level WaitForChild/:Wait()/yield during require blocks the whole boot — move it into onInit/onStart.`):format(
+					label,
+					module.Name,
+					INIT_YIELD_WARNING_TIME
+				)
+			)
+		end
+	end)
+
+	local ok, result = xpcall(require, _errorHandler, module)
+	completed = true
+	return ok, result
+end
 
 -- Count the number of ancestors for a given instance.
 local function countAncestors(instance: Instance): number
@@ -74,14 +110,19 @@ end
 local function _load(module: ModuleScript): any?
 	CycleMetatable.CurrentModuleLoading = module.Name
 
-	local success, dataOrErr = pcall(require, module)
+	local success, dataOrErr = _safeRequire(module, "module")
 	CycleMetatable.CurrentModuleLoading = nil
 
 	if success then
 		return dataOrErr
 	end
 
-	warn(("❌ Failed to load module '%s' 💥\nError: %s"):format(module.Name, dataOrErr))
+	warn(
+		(`❌ [Galaxy][CRITICAL] Failed to require module '%s' (skipped — other modules still load):\n%s`):format(
+			module.Name,
+			dataOrErr
+		)
+	)
 	return nil
 end
 
@@ -151,12 +192,14 @@ local function _loadInternal(system, rootModule: ModuleScript)
 				continue
 			end
 
-			local success, dataOrErr = pcall(require, module)
+			local success, dataOrErr = _safeRequire(module, "internal module")
 			if not success then
-				warn("❌ Failed to load internal module '%s' in system '%s'! 💥\nError: %s"):format(
-					module.Name,
-					root.Name,
-					dataOrErr
+				warn(
+					("❌ [Galaxy] Failed to load internal module '%s' in system '%s' (skipped)! 💥\nError: %s"):format(
+						module.Name,
+						root.Name,
+						dataOrErr
+					)
 				)
 				continue
 			end
@@ -242,16 +285,37 @@ function Galaxy.Launch(launchParams: LaunchParams)
 		_indexSystems(systemRoot)
 	end
 
-	for _, system in Systems do
-		if system.onInit and typeof(system.onInit) == "function" then
-			system:onInit()
+	for name, system in Systems do
+		if typeof(system.onInit) ~= "function" then
+			continue
+		end
+
+		local completed = false
+		task.delay(INIT_YIELD_WARNING_TIME, function()
+			if not completed then
+				warn(
+					(`⏳ [Galaxy][IMPORTANT] '%s'.onInit has been yielding for %ds+. `
+						.. `Check for a WaitForChild / :Wait() / network call that never resolves.`):format(
+						name,
+						INIT_YIELD_WARNING_TIME
+					)
+				)
+			end
+		end)
+
+		local ok, err = xpcall(system.onInit, _errorHandler, system)
+		completed = true
+
+		if not ok then
+			error((`[Galaxy] '%s'.onInit errored:\n%s`):format(name, err), 0)
 		end
 	end
 
 	for _, system in Systems do
-		if system.onStart and typeof(system.onStart) == "function" then
-			task.spawn(system.onStart, system)
+		if typeof(system.onStart) ~= "function" then
+			continue
 		end
+		task.spawn(system.onStart, system)
 	end
 end
 
