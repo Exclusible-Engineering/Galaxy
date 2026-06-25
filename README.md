@@ -14,7 +14,7 @@ Add this to your `wally.toml` and run `wally install`:
 
 ```toml
 [dependencies]
-Galaxy = "artisticvampyre/galaxy@1.1.0"
+Galaxy = "artisticvampyre/galaxy@1.2.0"
 ```
 
 ## Getting Started

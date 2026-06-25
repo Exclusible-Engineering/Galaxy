@@ -8,7 +8,7 @@
     • ⚡ Optimized for performance
     • 🛡️ Type-safe with Luau
     
-    Version: 1.1.0
+    Version: 1.2.0
     Author: ArtisticVampyre
 	Contributor: @32_Bits (https://github.com/git0uttahere)
 --]]
@@ -28,7 +28,7 @@ type LaunchParams = {
 }
 
 -- 🌟 Main Module
-local Galaxy = { _VERSION = "1.1.0" }
+local Galaxy = { _VERSION = "1.2.0" }
 
 -- 🎯 Environment Detection
 local SystemKey: string = RunService:IsServer() and "service" or "controller"
