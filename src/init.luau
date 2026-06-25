@@ -8,7 +8,7 @@
     • ⚡ Optimized for performance
     • 🛡️ Type-safe with Luau
     
-    Version: 1.0.1
+    Version: 1.1.0
     Author: ArtisticVampyre
 	Contributor: @32_Bits (https://github.com/git0uttahere)
 --]]
