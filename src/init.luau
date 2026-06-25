@@ -28,7 +28,7 @@ type LaunchParams = {
 }
 
 -- 🌟 Main Module
-local Galaxy = { _VERSION = "1.0.1" }
+local Galaxy = { _VERSION = "1.1.0" }
 
 -- 🎯 Environment Detection
 local SystemKey: string = RunService:IsServer() and "service" or "controller"
