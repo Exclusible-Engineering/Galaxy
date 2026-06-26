@@ -14,7 +14,6 @@
 --]]
 
 -- 🔧 Core Services
-local HttpService: HttpService = game:GetService("HttpService")
 local RunService: RunService = game:GetService("RunService")
 
 -- ⚙️ Configuration
@@ -195,6 +194,10 @@ end
 local function _indexSystems(location: Instance)
 	for _, descendant: ModuleScript in location:GetDescendants() do
 		if descendant:IsA("ModuleScript") and descendant ~= script then
+			if descendant:GetAttribute("GalaxyLoaded") then
+				continue
+			end
+
 			local childIndex = descendant.Name:lower()
 			if childIndex:find(SystemKey) then
 				local activeSystem = _load(descendant)
@@ -202,8 +205,7 @@ local function _indexSystems(location: Instance)
 					-- Use the current ModuleScript as the root for internal modules.
 					_loadInternal(activeSystem, descendant)
 					Systems[descendant.Name] = activeSystem
-					-- Rename the module to avoid collisions.
-					descendant.Name = HttpService:GenerateGUID()
+					descendant:SetAttribute("GalaxyLoaded", true)
 				end
 			end
 		end
