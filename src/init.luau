@@ -191,22 +191,35 @@ local function _loadInternal(system, rootModule: ModuleScript)
 	end
 end
 
--- Initializes systems by indexing ModuleScripts that match the system key.
-local function _indexSystems(location: Instance)
+-- Collects ModuleScripts that match the system key into systemModules and requires the whole batch in parallel afterwards.
+local function _indexSystems(location: Instance, systemModules: { ModuleScript })
 	for _, descendant: ModuleScript in location:GetDescendants() do
 		if descendant:IsA("ModuleScript") and descendant ~= script then
 			local childIndex = descendant.Name:lower()
 			if childIndex:find(SystemKey) then
-				local activeSystem = _load(descendant)
-				if activeSystem then
-					-- Use the current ModuleScript as the root for internal modules.
-					_loadInternal(activeSystem, descendant)
-					Systems[descendant.Name] = activeSystem
-					-- Rename the module to avoid collisions.
-					descendant.Name = HttpService:GenerateGUID()
-				end
+				table.insert(systemModules, descendant)
 			end
 		end
+	end
+end
+
+local function _loadSystems(systemModules: { ModuleScript })
+	local pending = #systemModules
+
+	for _, moduleScript: ModuleScript in systemModules do
+		task.spawn(function()
+			local activeSystem = _load(moduleScript)
+			if activeSystem then
+				_loadInternal(activeSystem, moduleScript)
+				Systems[moduleScript.Name] = activeSystem
+				moduleScript.Name = HttpService:GenerateGUID()
+			end
+			pending -= 1
+		end)
+	end
+
+	while pending > 0 do
+		task.wait()
 	end
 end
 
@@ -263,9 +276,13 @@ function Galaxy.Launch(launchParams: LaunchParams)
 		_indexModules(moduleRoot)
 	end
 
+	local systemModules: { ModuleScript } = {}
 	for _, systemRoot: Instance in launchParams.Systems do
-		_indexSystems(systemRoot)
+		_indexSystems(systemRoot, systemModules)
 	end
+
+	-- Require every system in parallel and wait for the whole batch before running any lifecycle hooks.
+	_loadSystems(systemModules)
 
 	for name, system in Systems do
 		if typeof(system.onInit) ~= "function" then
