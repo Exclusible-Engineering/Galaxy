@@ -59,14 +59,7 @@ local function _safeRequire(module: ModuleScript, label: string): (boolean, any)
 	local completed = false
 	task.delay(INIT_YIELD_WARNING_TIME, function()
 		if not completed then
-			warn(
-				(`⏳ [Galaxy][IMPORTANT] requiring %s '%s' has been yielding for %ds+. `
-					.. `A top-level WaitForChild/:Wait()/yield during require blocks the whole boot — move it into onInit/onStart.`):format(
-					label,
-					module.Name,
-					INIT_YIELD_WARNING_TIME
-				)
-			)
+			warn(`⏳[Galaxy][IMPORTANT] requiring {label} {module.Name} has been yielding for {INIT_YIELD_WARNING_TIME}s+. A top-level WaitForChild/:Wait()/yield during require blocks the whole boot, move it into onStart.`)
 		end
 	end)
 
@@ -117,12 +110,7 @@ local function _load(module: ModuleScript): any?
 		return dataOrErr
 	end
 
-	warn(
-		(`❌ [Galaxy][CRITICAL] Failed to require module '%s' (skipped — other modules still load):\n%s`):format(
-			module.Name,
-			dataOrErr
-		)
-	)
+	warn(`❌ [Galaxy][CRITICAL] Failed to require module {module.Name} (skipped — other modules still load):\n{dataOrErr}`)
 	return nil
 end
 
@@ -183,7 +171,7 @@ local function _loadInternal(system, rootModule: ModuleScript)
 	for _, dirKey: string in internal do
 		local dir: Folder? = root:FindFirstChild(dirKey) :: Folder?
 		if not dir then
-			warn(("❗️Internal directory '%s' not found in system '%s'! 🚫"):format(dirKey, root.Name))
+			warn(`❗️Internal directory {dirKey} not found in system {root.Name}! 🚫`)
 			continue
 		end
 
@@ -194,13 +182,7 @@ local function _loadInternal(system, rootModule: ModuleScript)
 
 			local success, dataOrErr = _safeRequire(module, "internal module")
 			if not success then
-				warn(
-					("❌ [Galaxy] Failed to load internal module '%s' in system '%s' (skipped)! 💥\nError: %s"):format(
-						module.Name,
-						root.Name,
-						dataOrErr
-					)
-				)
+				warn(`❌ [Galaxy] Failed to load internal module {module.Name} in system {root.Name} (skipped)! 💥\nError: {dataOrErr}`)
 				continue
 			end
 
