@@ -272,24 +272,14 @@ function Galaxy.Launch(launchParams: LaunchParams)
 			continue
 		end
 
-		local completed = false
-		task.delay(INIT_YIELD_WARNING_TIME, function()
-			if not completed then
-				warn(
-					(`⏳ [Galaxy][IMPORTANT] '%s'.onInit has been yielding for %ds+. `
-						.. `Check for a WaitForChild / :Wait() / network call that never resolves.`):format(
-						name,
-						INIT_YIELD_WARNING_TIME
-					)
-				)
-			end
+		local initThread = task.spawn(function()
+			system.onInit(system)
 		end)
 
-		local ok, err = xpcall(system.onInit, _errorHandler, system)
-		completed = true
-
-		if not ok then
-			error((`[Galaxy] '%s'.onInit errored:\n%s`):format(name, err), 0)
+		if coroutine.status(initThread) == "suspended" then
+			warn(
+				`⏳ [Galaxy][IMPORTANT] {name}.onInit yielded, continuing without waiting for it. Move WaitForChild / :Wait() / network calls into onStart so init order stays deterministic.`
+			)
 		end
 	end
 
