@@ -38,7 +38,7 @@ local CycleMetatable = require(script.CycleMetatable)
 local ModulesLoading: { [ModuleScript]: boolean } = {}
 local LoadedModules: { [ModuleScript]: any } = {}
 local Modules: { [string]: ModuleScript } = {}
-local Systems: { [string]: any } = {}
+local Systems: { [ModuleScript]: any?} = {}
 
 -----------------------------------------------------
 -- Helper Functions
@@ -211,8 +211,7 @@ local function _loadSystems(systemModules: { ModuleScript })
 			local activeSystem = _load(moduleScript)
 			if activeSystem then
 				_loadInternal(activeSystem, moduleScript)
-				Systems[moduleScript.Name] = activeSystem
-				moduleScript.Name = HttpService:GenerateGUID()
+				Systems[moduleScript] = activeSystem
 			end
 			pending -= 1
 		end)
@@ -284,7 +283,7 @@ function Galaxy.Launch(launchParams: LaunchParams)
 	-- Require every system in parallel and wait for the whole batch before running any lifecycle hooks.
 	_loadSystems(systemModules)
 
-	for name, system in Systems do
+	for moduleScript, system in Systems do
 		if typeof(system.onInit) ~= "function" then
 			continue
 		end
@@ -295,7 +294,7 @@ function Galaxy.Launch(launchParams: LaunchParams)
 
 		if coroutine.status(initThread) == "suspended" then
 			warn(
-				`⏳ [Galaxy][IMPORTANT] {name}.onInit yielded, continuing without waiting for it. Move WaitForChild / :Wait() / network calls into onStart so init order stays deterministic.`
+				`⏳ [Galaxy][IMPORTANT] {moduleScript:GetFullName()}.onInit yielded, continuing without waiting for it. Move WaitForChild / :Wait() / network calls into onStart so init order stays deterministic.`
 			)
 		end
 	end
