@@ -152,7 +152,6 @@ local function _loadInternal(system, rootModule: ModuleScript)
 			end
 
 			local success, dataOrErr = pcall(require, module)
-
 			if not success then
 				warn("❌ Failed to load internal module '%s' in system '%s'! 💥\nError: %s"):format(
 					module.Name,
@@ -162,8 +161,6 @@ local function _loadInternal(system, rootModule: ModuleScript)
 				continue
 			end
 
-			-- Note (Ryan): This requires the module twice. Roblox caches require results,
-			-- so you can use dataOrErr directly.
 			system[module.Name] = require(module)
 		end
 	end
@@ -181,10 +178,6 @@ local function _indexSystems(location: Instance)
 					_loadInternal(activeSystem, descendant)
 					Systems[descendant.Name] = activeSystem
 					-- Rename the module to avoid collisions.
-
-					-- Note (Ryan): Why are we renaming the module? This makes debugging harder,
-					-- and there should be no reason for duplicate names for modules? And if we end up going with
-					-- require() over shared() syntax for type support, this would break it
 					descendant.Name = HttpService:GenerateGUID()
 				end
 			end
@@ -196,8 +189,6 @@ end
 -- 🛡️ Fake Module Protection
 -----------------------------------------------------
 
--- Note (Ryan): Do we still need this? Is this for cyclic dependency support or detection?
--- If we aren't going for cyclic dependency support, could this be simplier?
 local FakeModule = { IsFakeModule = true }
 setmetatable(FakeModule, CycleMetatable)
 
@@ -214,9 +205,6 @@ function Galaxy.__call(_: {}, module: string | ModuleScript): any?
 
 	if not mod then
 		warn(`❗️Module '{module}' not found! 🚫`)
-
-		-- Note (Ryan): `mod` is nil here, so we are we trying to index LoadedModules[nil]?
-		-- Either just return nil/error, or set the dictionary index to nil?
 		LoadedModules[mod] = FakeModule
 		return
 	end
@@ -225,9 +213,6 @@ function Galaxy.__call(_: {}, module: string | ModuleScript): any?
 		return LoadedModules[mod]
 	end
 
-	-- Note (Ryan): Correct me if I'm wrong, but this like a fake-module proxy for cyclic module support?
-	-- If our goal is only to detect cyclic dependencies and error in a tracable way,
-	-- we may not need this at all. This is pretty cool though!
 	if not ModulesLoading[mod] then
 		ModulesLoading[mod] = true
 		local moduleData = _load(mod)
