@@ -21,12 +21,7 @@ local METAMETHODS = {
 }
 
 local function formatWarning(self: table, action: string, ...: any): string
-	return string.format(
-		"Detected bare code referencing a cyclic dependency (%s -> %s). Attempt to %s. Please revise.",
-		tostring(CycleMetatable.CurrentModuleLoading),
-		tostring(self.Name),
-		string.format(action, ...)
-	)
+	return `Detected bare code referencing a cyclic dependency ({CycleMetatable.CurrentModuleLoading} -> {self.Name}). Attempt to {action}. Please revise.`
 end
 
 -- Generate metamethods dynamically

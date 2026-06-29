@@ -44,10 +44,6 @@ local Systems: { [ModuleScript]: any?} = {}
 -- Helper Functions
 -----------------------------------------------------
 
-local function _errorHandler(err: any): string
-	return tostring(err) .. "\n" .. debug.traceback()
-end
-
 --[[
 	Requires a module with error isolation + a yield watchdog. require() runs the
 	module's top-level body, which can both error AND yield (e.g. a top-level
@@ -55,17 +51,17 @@ end
 	so we catch errors (returning ok = false) and warn by name if the require
 	yields longer than INIT_YIELD_WARNING_TIME.
 ]]
-local function _safeRequire(module: ModuleScript, label: string): (boolean, any)
+local function _watchYield(label: string, name: string): () -> ()
+	local thread = coroutine.running()
 	local completed = false
 	task.delay(INIT_YIELD_WARNING_TIME, function()
-		if not completed then
-			warn(`⏳[Galaxy][IMPORTANT] requiring {label} {module.Name} has been yielding for {INIT_YIELD_WARNING_TIME}s+. A top-level WaitForChild/:Wait()/yield during require blocks the whole boot, move it into onStart.`)
+		if not completed and coroutine.status(thread) ~= "dead" then
+			warn(`⏳ [Galaxy][IMPORTANT] {label} '{name}' has been yielding for {INIT_YIELD_WARNING_TIME}s+. A top-level WaitForChild/:Wait()/yield blocks the boot; move it into onStart.`)
 		end
 	end)
-
-	local ok, result = xpcall(require, _errorHandler, module)
-	completed = true
-	return ok, result
+	return function()
+		completed = true
+	end
 end
 
 -- Count the number of ancestors for a given instance.
@@ -101,17 +97,14 @@ end
 
 -- Loads the given ModuleScript with error handling. Returns the loaded data.
 local function _load(module: ModuleScript): any?
-	CycleMetatable.CurrentModuleLoading = module.Name
+	local markDone = _watchYield("requiring module", module.Name)
 
-	local success, dataOrErr = _safeRequire(module, "module")
+	CycleMetatable.CurrentModuleLoading = module.Name
+	local data = require(module)
 	CycleMetatable.CurrentModuleLoading = nil
 
-	if success then
-		return dataOrErr
-	end
-
-	warn(`❌ [Galaxy][CRITICAL] Failed to require module {module.Name} (skipped — other modules still load):\n{dataOrErr}`)
-	return nil
+	markDone()
+	return data
 end
 
 -- Adds a ModuleScript to the internal registry, checking for duplicates.
@@ -180,13 +173,9 @@ local function _loadInternal(system, rootModule: ModuleScript)
 				continue
 			end
 
-			local success, dataOrErr = _safeRequire(module, "internal module")
-			if not success then
-				warn(`❌ [Galaxy] Failed to load internal module {module.Name} in system {root.Name} (skipped)! 💥\nError: {dataOrErr}`)
-				continue
-			end
-
+			local markDone = _watchYield("requiring internal module", module.Name)
 			system[module.Name] = require(module)
+			markDone()
 		end
 	end
 end
@@ -203,23 +192,31 @@ local function _indexSystems(location: Instance, systemModules: { ModuleScript }
 	end
 end
 
+local function _awaitThreads(threads: { thread })
+	for _, thread in threads do
+		while coroutine.status(thread) ~= "dead" do
+			task.wait()
+		end
+	end
+end
+
 local function _loadSystems(systemModules: { ModuleScript })
-	local pending = #systemModules
+	local threads: { thread } = {}
 
 	for _, moduleScript: ModuleScript in systemModules do
-		task.spawn(function()
-			local activeSystem = _load(moduleScript)
-			if activeSystem then
-				_loadInternal(activeSystem, moduleScript)
-				Systems[moduleScript] = activeSystem
-			end
-			pending -= 1
-		end)
+		table.insert(
+			threads,
+			task.spawn(function()
+				local activeSystem = _load(moduleScript)
+				if activeSystem then
+					_loadInternal(activeSystem, moduleScript)
+					Systems[moduleScript] = activeSystem
+				end
+			end)
+		)
 	end
 
-	while pending > 0 do
-		task.wait()
-	end
+	_awaitThreads(threads)
 end
 
 -----------------------------------------------------
@@ -283,22 +280,26 @@ function Galaxy.Launch(launchParams: LaunchParams)
 	-- Require every system in parallel and wait for the whole batch before running any lifecycle hooks.
 	_loadSystems(systemModules)
 
+	-- onInit runs for every system in parallel; wait for them all to settle before onStart.
+	local initThreads: { thread } = {}
 	for moduleScript, system in Systems do
 		if typeof(system.onInit) ~= "function" then
 			continue
 		end
 
-		local initThread = task.spawn(function()
-			system.onInit(system)
-		end)
-
-		if coroutine.status(initThread) == "suspended" then
-			warn(
-				`⏳ [Galaxy][IMPORTANT] {moduleScript:GetFullName()}.onInit yielded, continuing without waiting for it. Move WaitForChild / :Wait() / network calls into onStart so init order stays deterministic.`
-			)
-		end
+		local name = moduleScript.Name
+		table.insert(
+			initThreads,
+			task.spawn(function()
+				local markDone = _watchYield("onInit", name)
+				system.onInit(system)
+				markDone()
+			end)
+		)
 	end
+	_awaitThreads(initThreads)
 
+	-- onStart runs only after every onInit has settled.
 	for _, system in Systems do
 		if typeof(system.onStart) ~= "function" then
 			continue
